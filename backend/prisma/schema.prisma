@@ -8,12 +8,13 @@ datasource db {
 }
 
 model Wallet {
-  id           String        @id @default(cuid())
-  name         String        @unique
-  type         String        @default("CASH")
-  balancePaisa Int           @default(0)
-  createdAt    DateTime      @default(now())
+  id           String             @id @default(cuid())
+  name         String             @unique
+  type         String             @default("CASH")
+  balancePaisa Int                @default(0)
+  createdAt    DateTime           @default(now())
   transactions Transaction[]
+  cashClosings DailyCashClosing[]
 }
 
 model Contact {
@@ -25,6 +26,7 @@ model Contact {
   shareToken      String?       @unique
   createdAt       DateTime      @default(now())
   transactions    Transaction[]
+  stockOrders     StockOrder[]
 }
 
 model Transaction {
@@ -39,4 +41,63 @@ model Transaction {
 
   wallet      Wallet?  @relation(fields: [walletId], references: [id])
   contact     Contact? @relation(fields: [contactId], references: [id])
+}
+
+model Product {
+  id             String           @id @default(cuid())
+  name           String           @unique
+  sku            String?
+  unit           String           @default("pcs")
+  costPricePaisa Int              @default(0)
+  mrpPricePaisa  Int              @default(0)
+  currentStock   Float            @default(0)
+  lowStockLimit  Float            @default(5)
+  createdAt      DateTime         @default(now())
+  orderItems     StockOrderItem[]
+}
+
+model StockOrder {
+  id               String           @id @default(cuid())
+  orderNumber      String           @unique
+  type             String
+  contactId        String?
+  totalAmountPaisa Int
+  paidAmountPaisa  Int              @default(0)
+  dueAmountPaisa   Int              @default(0)
+  profitPaisa      Int              @default(0)
+  note             String?
+  createdAt        DateTime         @default(now())
+
+  contact          Contact?         @relation(fields: [contactId], references: [id])
+  items            StockOrderItem[]
+}
+
+model StockOrderItem {
+  id                 String     @id @default(cuid())
+  orderId            String
+  productId          String
+  quantity           Float
+  mrpPricePaisa      Int
+  unitPricePaisa     Int
+  costPricePaisa     Int
+  priceVariancePaisa Int        @default(0)
+  lineTotalPaisa     Int
+
+  order              StockOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product            Product    @relation(fields: [productId], references: [id])
+}
+
+model DailyCashClosing {
+  id                String   @id @default(cuid())
+  walletId          String
+  closingDate       String
+  expectedCashPaisa Int
+  actualCashPaisa   Int
+  discrepancyPaisa  Int
+  notesBreakdown    Json?
+  createdAt         DateTime @default(now())
+
+  wallet            Wallet   @relation(fields: [walletId], references: [id])
+
+  @@unique([walletId, closingDate])
 }

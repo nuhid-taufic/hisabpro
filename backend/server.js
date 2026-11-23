@@ -6,6 +6,7 @@ const { PrismaClient } = require('@prisma/client');
 const walletRoutes = require('./routes/wallets');
 const contactRoutes = require('./routes/contacts');
 const transactionRoutes = require('./routes/transactions');
+const storeRoutes = require('./routes/store');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -13,7 +14,6 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
-// Attach prisma instance to every request
 app.use((req, _res, next) => {
   req.prisma = prisma;
   next();
@@ -27,8 +27,9 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/wallets', walletRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/store', storeRoutes);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`HisabPro Core API cholche: http://localhost:${PORT}`);
+  console.log(`HisabPro Full Backend cholche: http://localhost:${PORT}`);
 });
