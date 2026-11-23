@@ -1,53 +1,98 @@
 const express = require('express');
+const { z } = require('zod');
+const { requireAuth } = require('../middleware/auth');
+const { AppError, asyncHandler } = require('../middleware/errorHandler');
+const { serialize, toPaisa } = require('../utils/money');
+
 const router = express.Router();
+router.use(requireAuth);
 
-// Sob wallet dekha
-router.get('/', async (req, res) => {
-  const wallets = await req.prisma.wallet.findMany({ orderBy: { createdAt: 'asc' } });
-  res.json(wallets);
+const createWalletSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  type: z.enum(['CASH', 'MFS', 'BANK', 'CARD']).default('CASH'),
+  openingBalance: z.coerce.number().default(0),
 });
 
-// Notun wallet banano (e.g. Cash, bKash, DBBL)
-router.post('/', async (req, res) => {
-  try {
-    const { name, type = 'CASH', openingBalance = 0 } = req.body;
-    const balancePaisa = Math.round(Number(openingBalance) * 100);
-    const wallet = await req.prisma.wallet.create({
-      data: { name, type, balancePaisa },
+const reconcileSchema = z.object({
+  actualBalance: z.coerce.number(),
+  bookId: z.string().optional(),
+  note: z.string().trim().max(200).optional(),
+});
+
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const wallets = await req.prisma.wallet.findMany({
+      where: { userId: req.user.userId, isArchived: false },
+      orderBy: { createdAt: 'asc' },
     });
-    res.status(201).json(wallet);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+    res.json(serialize({ success: true, wallets }));
+  })
+);
 
-// 1-Click Balance Reconcile ("Hisab Milano")
-router.post('/:id/reconcile', async (req, res) => {
-  try {
-    const actualPaisa = Math.round(Number(req.body.actualBalance) * 100);
-    const wallet = await req.prisma.wallet.findUnique({ where: { id: req.params.id } });
-    if (!wallet) return res.status(404).json({ error: 'Wallet pawa jayni' });
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const body = createWalletSchema.parse(req.body);
+    const openingPaisa = toPaisa(body.openingBalance);
+    const wallet = await req.prisma.wallet.create({
+      data: {
+        userId: req.user.userId,
+        name: body.name,
+        type: body.type,
+        openingBalancePaisa: openingPaisa,
+        balancePaisa: openingPaisa,
+      },
+    });
+    res.status(201).json(serialize({ success: true, wallet }));
+  })
+);
 
-    const deltaPaisa = actualPaisa - wallet.balancePaisa;
-    const [updatedWallet] = await req.prisma.$transaction([
-      req.prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { balancePaisa: actualPaisa },
-      }),
-      req.prisma.transaction.create({
+router.post(
+  '/:id/reconcile',
+  asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const body = reconcileSchema.parse(req.body);
+    const actualPaisa = toPaisa(body.actualBalance);
+
+    const result = await req.prisma.$transaction(async (tx) => {
+      const wallet = await tx.wallet.findFirst({ where: { id: req.params.id, userId } });
+      if (!wallet) throw new AppError('Wallet not found.', 404);
+
+      const deltaPaisa = actualPaisa - wallet.balancePaisa;
+      if (deltaPaisa === 0n) return { wallet, deltaPaisa: 0n };
+
+      const book =
+        (body.bookId && body.bookId !== 'ALL'
+          ? await tx.ledgerBook.findFirst({ where: { id: body.bookId, userId } })
+          : await tx.ledgerBook.findFirst({ where: { userId, isDefault: true } })) ??
+        (await tx.ledgerBook.findFirst({ where: { userId } }));
+
+      if (!book) throw new AppError('No ledger book available.', 400);
+
+      await tx.transaction.create({
         data: {
+          userId,
+          bookId: book.id,
           type: 'ADJUSTMENT',
           amountPaisa: deltaPaisa,
           walletId: wallet.id,
-          note: `Hisab Milano adjustment (${deltaPaisa >= 0 ? '+' : ''}${deltaPaisa / 100} Tk)`,
+          note:
+            body.note ||
+            `Hisab Milano (${deltaPaisa > 0n ? 'Surplus +' : 'Shortage '}${(Number(deltaPaisa) / 100).toFixed(2)} Tk)`,
         },
-      }),
-    ]);
+      });
 
-    res.json({ wallet: updatedWallet, adjustedByTaka: deltaPaisa / 100 });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+      const updated = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balancePaisa: actualPaisa },
+      });
+
+      return { wallet: updated, deltaPaisa };
+    });
+
+    res.json(serialize({ success: true, ...result }));
+  })
+);
 
 module.exports = router;

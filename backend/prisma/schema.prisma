@@ -7,97 +7,324 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum BookType {
+  PERSONAL
+  STORE
+}
+
+enum WalletType {
+  CASH
+  MFS
+  BANK
+  CARD
+}
+
+enum ContactType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+  FRIEND
+  CLIENT
+  FAMILY
+  OTHER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  LEND
+  BORROW
+  CREDIT_EXPENSE
+  SETTLEMENT_IN
+  SETTLEMENT_OUT
+  ADJUSTMENT
+}
+
+enum VerificationStatus {
+  PENDING
+  CONFIRMED
+  DISPUTED
+}
+
+enum StockOrderType {
+  PURCHASE
+  SALE
+}
+
+enum StockMovementReason {
+  PURCHASE
+  SALE
+  RETURN_IN
+  RETURN_OUT
+  DAMAGE
+  MANUAL_ADJUST
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  baseCurrency String   @default("BDT")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  books             LedgerBook[]
+  wallets           Wallet[]
+  contacts          Contact[]
+  categories        Category[]
+  tags              Tag[]
+  transactions      Transaction[]
+  products          Product[]
+  stockOrders       StockOrder[]
+  dailyCashClosings DailyCashClosing[]
+}
+
+model LedgerBook {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  bookType  BookType @default(PERSONAL)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+  products          Product[]
+  stockOrders       StockOrder[]
+  dailyCashClosings DailyCashClosing[]
+
+  @@unique([userId, name])
+}
+
 model Wallet {
-  id           String             @id @default(cuid())
-  name         String             @unique
-  type         String             @default("CASH")
-  balancePaisa Int                @default(0)
-  createdAt    DateTime           @default(now())
-  transactions Transaction[]
-  cashClosings DailyCashClosing[]
+  id                  String     @id @default(cuid())
+  userId              String
+  name                String
+  type                WalletType @default(CASH)
+  balancePaisa        BigInt     @default(0)
+  openingBalancePaisa BigInt     @default(0)
+  isArchived          Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoingTxs       Transaction[]      @relation("SourceWallet")
+  incomingTxs       Transaction[]      @relation("TargetWallet")
+  dailyCashClosings DailyCashClosing[]
+
+  @@unique([userId, name])
 }
 
 model Contact {
-  id              String        @id @default(cuid())
+  id              String      @id @default(cuid())
+  userId          String
   name            String
-  phone           String?       @unique
-  type            String        @default("CUSTOMER")
-  netBalancePaisa Int           @default(0)
-  shareToken      String?       @unique
-  createdAt       DateTime      @default(now())
-  transactions    Transaction[]
-  stockOrders     StockOrder[]
+  phone           String?
+  type            ContactType @default(CUSTOMER)
+  address         String?
+  note            String?
+  netBalancePaisa BigInt      @default(0)
+
+  shareToken     String?   @unique
+  isShareEnabled Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  stockOrders  StockOrder[]
+
+  @@unique([userId, phone])
+  @@index([userId, name])
+}
+
+model Category {
+  id       String  @id @default(cuid())
+  userId   String
+  name     String
+  isIncome Boolean @default(false)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, name, isIncome])
+}
+
+model Tag {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+
+  @@unique([userId, name])
 }
 
 model Transaction {
-  id          String   @id @default(cuid())
-  type        String
-  amountPaisa Int
-  feePaisa    Int      @default(0)
-  note        String?
-  walletId    String?
-  contactId   String?
-  createdAt   DateTime @default(now())
+  id                  String             @id @default(cuid())
+  userId              String
+  bookId              String
+  type                TransactionType
+  amountPaisa         BigInt
+  feePaisa            BigInt             @default(0)
+  currency            String             @default("BDT")
+  originalAmountPaisa BigInt?
+  exchangeRate        Decimal?           @db.Decimal(12, 4)
+  walletId            String?
+  targetWalletId      String?
+  contactId           String?
+  categoryId          String?
+  note                String?
+  externalTrxId       String?
+  rawInputText        String?
+  transactionDate     DateTime           @default(now())
+  dueDate             DateTime?
+  verificationStatus  VerificationStatus @default(PENDING)
+  verifiedAt          DateTime?
+  disputeNote         String?
+  deletedAt           DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
-  wallet      Wallet?  @relation(fields: [walletId], references: [id])
-  contact     Contact? @relation(fields: [contactId], references: [id])
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book                  LedgerBook        @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  wallet                Wallet?           @relation("SourceWallet", fields: [walletId], references: [id])
+  targetWallet          Wallet?           @relation("TargetWallet", fields: [targetWalletId], references: [id])
+  contact               Contact?          @relation(fields: [contactId], references: [id])
+  category              Category?         @relation(fields: [categoryId], references: [id])
+  tags                  TransactionTag[]
+  stockOrder            StockOrder?
+  cashClosingAdjustment DailyCashClosing? @relation("CashClosingAdjustment")
+
+  @@unique([userId, externalTrxId])
+  @@index([userId, bookId, transactionDate(sort: Desc)])
+  @@index([userId, contactId, deletedAt])
+}
+
+model TransactionTag {
+  transactionId String
+  tagId         String
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
 }
 
 model Product {
-  id             String           @id @default(cuid())
-  name           String           @unique
-  sku            String?
-  unit           String           @default("pcs")
-  costPricePaisa Int              @default(0)
-  mrpPricePaisa  Int              @default(0)
-  currentStock   Float            @default(0)
-  lowStockLimit  Float            @default(5)
-  createdAt      DateTime         @default(now())
-  orderItems     StockOrderItem[]
+  id                String   @id @default(cuid())
+  userId            String
+  bookId            String
+  name              String
+  sku               String?
+  unit              String   @default("pcs")
+  costPricePaisa    BigInt   @default(0)
+  mrpPricePaisa     BigInt   @default(0)
+  minSellPricePaisa BigInt?
+  currentStock      Decimal  @default(0) @db.Decimal(12, 3)
+  lowStockLimit     Decimal  @default(5) @db.Decimal(12, 3)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book       LedgerBook       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  orderItems StockOrderItem[]
+  movements  StockMovement[]
+
+  @@unique([bookId, name])
+  @@index([userId, bookId])
 }
 
 model StockOrder {
-  id               String           @id @default(cuid())
-  orderNumber      String           @unique
-  type             String
+  id               String         @id @default(cuid())
+  userId           String
+  bookId           String
+  orderNumber      String
+  type             StockOrderType
   contactId        String?
-  totalAmountPaisa Int
-  paidAmountPaisa  Int              @default(0)
-  dueAmountPaisa   Int              @default(0)
-  profitPaisa      Int              @default(0)
+  subtotalPaisa    BigInt
+  discountPaisa    BigInt         @default(0)
+  totalAmountPaisa BigInt
+  paidAmountPaisa  BigInt         @default(0)
+  dueAmountPaisa   BigInt         @default(0)
+  profitPaisa      BigInt         @default(0)
+  transactionId    String?        @unique
   note             String?
-  createdAt        DateTime         @default(now())
+  orderDate        DateTime       @default(now())
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
 
-  contact          Contact?         @relation(fields: [contactId], references: [id])
-  items            StockOrderItem[]
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book        LedgerBook       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  contact     Contact?         @relation(fields: [contactId], references: [id])
+  transaction Transaction?     @relation(fields: [transactionId], references: [id])
+  items       StockOrderItem[]
+  movements   StockMovement[]
+
+  @@unique([bookId, orderNumber])
+  @@index([userId, bookId, orderDate(sort: Desc)])
 }
 
 model StockOrderItem {
-  id                 String     @id @default(cuid())
+  id                 String  @id @default(cuid())
   orderId            String
   productId          String
-  quantity           Float
-  mrpPricePaisa      Int
-  unitPricePaisa     Int
-  costPricePaisa     Int
-  priceVariancePaisa Int        @default(0)
-  lineTotalPaisa     Int
+  quantity           Decimal @db.Decimal(12, 3)
+  mrpPricePaisa      BigInt
+  unitPricePaisa     BigInt
+  costPricePaisa     BigInt
+  priceVariancePaisa BigInt  @default(0)
+  lineTotalPaisa     BigInt
 
-  order              StockOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product            Product    @relation(fields: [productId], references: [id])
+  order   StockOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+}
+
+model StockMovement {
+  id             String              @id @default(cuid())
+  productId      String
+  orderId        String?
+  reason         StockMovementReason
+  quantityChange Decimal             @db.Decimal(12, 3)
+  balanceAfter   Decimal             @db.Decimal(12, 3)
+  note           String?
+  createdAt      DateTime            @default(now())
+
+  product Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order   StockOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt(sort: Desc)])
 }
 
 model DailyCashClosing {
   id                String   @id @default(cuid())
+  userId            String
+  bookId            String
   walletId          String
-  closingDate       String
-  expectedCashPaisa Int
-  actualCashPaisa   Int
-  discrepancyPaisa  Int
-  notesBreakdown    Json?
-  createdAt         DateTime @default(now())
+  closingDate       DateTime @db.Date
+  openingCashPaisa  BigInt
+  cashInTotalPaisa  BigInt
+  cashOutTotalPaisa BigInt
+  expectedCashPaisa BigInt
+  actualCashPaisa   BigInt
+  discrepancyPaisa  BigInt
+  denominationJson  Json?
+  adjustmentTxId    String?  @unique
+  note              String?
+  closedAt          DateTime @default(now())
 
-  wallet            Wallet   @relation(fields: [walletId], references: [id])
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book         LedgerBook   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  wallet       Wallet       @relation(fields: [walletId], references: [id])
+  adjustmentTx Transaction? @relation("CashClosingAdjustment", fields: [adjustmentTxId], references: [id])
 
-  @@unique([walletId, closingDate])
+  @@unique([bookId, walletId, closingDate])
+  @@index([userId, bookId, closingDate(sort: Desc)])
 }
