@@ -5,6 +5,8 @@ import AuthScreen from './components/AuthScreen';
 import DashboardView from './components/DashboardView';
 import MagicBarModal from './components/MagicBarModal';
 import ContactsView from './components/ContactsView';
+import StoreView from './components/StoreView';
+import ReportsView from './components/ReportsView';
 import PublicTrustView from './components/PublicTrustView';
 
 export default function App() {
@@ -129,14 +131,14 @@ function WorkspaceApp() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-[#FAFAFA] flex flex-col md:flex-row">
-      <aside className="hidden md:flex md:w-64 md:flex-col border-r border-[#26262B] bg-[#141417] p-4 sticky top-0 h-screen">
+      <aside className="hidden md:flex md:w-64 md:flex-col border-r border-[#26262B] bg-[#141417] p-4 sticky top-0 h-screen print:hidden">
         <div className="flex items-center gap-2.5 px-2 py-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3B82F6] font-bold text-white">
             H
           </div>
           <div>
             <div className="text-sm font-bold text-white">HisabPro</div>
-            <div className="text-[11px] text-[#A1A1AA]">v2.0 • Sprint 2</div>
+            <div className="text-[11px] text-[#A1A1AA]">v2.0 • Production</div>
           </div>
         </div>
 
@@ -209,7 +211,7 @@ function WorkspaceApp() {
       </aside>
 
       <div className="flex-1 min-w-0 pb-20 md:pb-8">
-        <header className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-[#26262B] bg-[#0A0A0B] px-4 py-3">
+        <header className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-[#26262B] bg-[#0A0A0B] px-4 py-3 print:hidden">
           <select
             value={activeBookId}
             onChange={(e) => setActiveBookId(e.target.value)}
@@ -281,24 +283,21 @@ function WorkspaceApp() {
           )}
 
           {tab === 'store' && (
-            <div className="rounded-2xl border border-[#26262B] bg-[#141417] p-8 text-center">
-              <div className="text-sm font-bold text-white">Store POS, Manual MRP Override &amp; Daily Cash Closing</div>
-              <p className="mt-1 text-xs text-[#A1A1AA]">
-                Next up in Sprint 3 — database tables &amp; demo products are already live.
-              </p>
-            </div>
+            <StoreView
+              books={books}
+              activeBookId={activeBookId}
+              wallets={wallets}
+              contacts={contacts}
+              refreshBase={refreshBase}
+              notify={notify}
+            />
           )}
 
-          {tab === 'reports' && (
-            <div className="rounded-2xl border border-[#26262B] bg-[#141417] p-8 text-center">
-              <div className="text-sm font-bold text-white">Reports, Category/Tag Breakdown &amp; CSV/JSON/PDF Export</div>
-              <p className="mt-1 text-xs text-[#A1A1AA]">Next up in Sprint 3.</p>
-            </div>
-          )}
+          {tab === 'reports' && <ReportsView activeBookId={activeBookId} notify={notify} />}
         </main>
       </div>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-[#26262B] bg-[#141417] py-2">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-[#26262B] bg-[#141417] py-2 print:hidden">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -329,7 +328,7 @@ function WorkspaceApp() {
 
       {toast && (
         <div
-          className={`fixed bottom-20 md:bottom-5 right-5 z-50 rounded-xl border px-4 py-3 text-xs font-semibold ${
+          className={`fixed bottom-20 md:bottom-5 right-5 z-50 rounded-xl border px-4 py-3 text-xs font-semibold print:hidden ${
             toast.isError
               ? 'border-rose-500/40 bg-rose-950 text-rose-100'
               : 'border-emerald-500/40 bg-emerald-950 text-emerald-100'

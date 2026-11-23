@@ -13,6 +13,8 @@ const categoryRoutes = require('./routes/categories');
 const contactRoutes = require('./routes/contacts');
 const transactionRoutes = require('./routes/transactions');
 const parserRoutes = require('./routes/parser');
+const storeRoutes = require('./routes/store');
+const reportsRoutes = require('./routes/reports');
 const trustRoutes = require('./routes/trust');
 
 const app = express();
@@ -35,7 +37,7 @@ app.use((req, _res, next) => {
 
 app.get('/api/health', async (_req, res) => {
   await prisma.$queryRaw`SELECT 1`;
-  res.json({ status: 'ok', version: '2.0-sprint2', database: 'connected' });
+  res.json({ status: 'ok', version: '2.0-complete', database: 'connected' });
 });
 
 app.use('/api/auth', authRoutes);
@@ -45,11 +47,13 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/parser', parserRoutes);
+app.use('/api/store', storeRoutes);
+app.use('/api/reports', reportsRoutes);
 app.use('/api/public/trust', trustRoutes);
 
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`HisabPro v2.0 (Sprint 2) Backend running on http://localhost:${PORT}`);
+  console.log(`HisabPro v2.0 Complete Backend running on http://localhost:${PORT}`);
 });
