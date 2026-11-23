@@ -1,0 +1,63 @@
+{
+  "info": {
+    "name": "HisabPro v2.0 API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000/api" }
+  ],
+  "item": [
+    {
+      "name": "1. Health Check",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "2. Auth - Demo Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"demo@hisabpro.app\",\n  \"password\": \"Demo@1234\"\n}"
+        }
+      }
+    },
+    {
+      "name": "3. Magic SMS Parser Preview",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/parser/preview",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input\": \"Cash Out Tk 5,000.00 to 01711889900 successful. Fee Tk 92.50. Balance Tk 6,815.00. TrxID BJK72X9Q.\"\n}"
+        }
+      }
+    },
+    {
+      "name": "4. Wallets List",
+      "request": { "method": "GET", "url": "{{baseUrl}}/wallets" }
+    },
+    {
+      "name": "5. Contacts List",
+      "request": { "method": "GET", "url": "{{baseUrl}}/contacts" }
+    },
+    {
+      "name": "6. Store Products",
+      "request": { "method": "GET", "url": "{{baseUrl}}/store/products" }
+    },
+    {
+      "name": "7. Store Trending Analytics",
+      "request": { "method": "GET", "url": "{{baseUrl}}/store/analytics/trending?days=30" }
+    },
+    {
+      "name": "8. Reports Summary",
+      "request": { "method": "GET", "url": "{{baseUrl}}/reports/summary" }
+    },
+    {
+      "name": "9. Public Trust Link (No Auth)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/public/trust/rh-demo-9x4k2m" }
+    }
+  ]
+}
