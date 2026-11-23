@@ -1,10 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BarChart3, BookOpen, Home, LogOut, Store, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Home, LogOut, Sparkles, Store, Users } from 'lucide-react';
 import { apiFetch } from './lib/api';
 import AuthScreen from './components/AuthScreen';
 import DashboardView from './components/DashboardView';
+import MagicBarModal from './components/MagicBarModal';
+import ContactsView from './components/ContactsView';
+import PublicTrustView from './components/PublicTrustView';
 
 export default function App() {
+  const trustToken = new URLSearchParams(window.location.search).get('trust');
+  if (trustToken) {
+    return <PublicTrustView token={trustToken} />;
+  }
+  return <WorkspaceApp />;
+}
+
+function WorkspaceApp() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [tab, setTab] = useState('home');
@@ -13,6 +24,8 @@ export default function App() {
   const [wallets, setWallets] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [magicOpen, setMagicOpen] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState(null);
 
   const notify = useCallback((message, isError = false) => {
@@ -31,6 +44,7 @@ export default function App() {
     setWallets(wRes.wallets || []);
     setContacts(cRes.contacts || []);
     setCategories(catRes.categories || []);
+    setRefreshTick((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -51,6 +65,17 @@ export default function App() {
       mounted = false;
     };
   }, [refreshBase]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (user) setMagicOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [user]);
 
   async function handleLogout() {
     await apiFetch('/auth/logout', { method: 'POST' });
@@ -104,7 +129,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-[#FAFAFA] flex flex-col md:flex-row">
-      {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-64 md:flex-col border-r border-[#26262B] bg-[#141417] p-4 sticky top-0 h-screen">
         <div className="flex items-center gap-2.5 px-2 py-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3B82F6] font-bold text-white">
@@ -112,7 +136,7 @@ export default function App() {
           </div>
           <div>
             <div className="text-sm font-bold text-white">HisabPro</div>
-            <div className="text-[11px] text-[#A1A1AA]">v2.0 • Sprint 1</div>
+            <div className="text-[11px] text-[#A1A1AA]">v2.0 • Sprint 2</div>
           </div>
         </div>
 
@@ -136,6 +160,17 @@ export default function App() {
             </select>
           </div>
         </div>
+
+        <button
+          onClick={() => setMagicOpen(true)}
+          className="mt-4 flex items-center justify-between rounded-xl border border-[#1E3A6E] bg-[#0F1E3A] px-3 py-2.5 text-xs font-semibold text-blue-300 hover:border-[#3B82F6]"
+        >
+          <span className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-[#3B82F6]" />
+            Magic SMS / Command
+          </span>
+          <kbd className="rounded bg-[#0A0A0B] px-1.5 py-0.5 text-[10px] text-zinc-400">⌘K</kbd>
+        </button>
 
         <nav className="mt-6 flex-1 space-y-1">
           {navItems.map((item) => {
@@ -173,7 +208,6 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <div className="flex-1 min-w-0 pb-20 md:pb-8">
         <header className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-[#26262B] bg-[#0A0A0B] px-4 py-3">
           <select
@@ -189,49 +223,81 @@ export default function App() {
             ))}
           </select>
           <span className="text-sm font-bold text-white">HisabPro</span>
-          <button onClick={handleLogout} className="text-xs text-zinc-400 hover:text-[#F43F5E]">
-            Logout
+          <button
+            onClick={() => setMagicOpen(true)}
+            className="inline-flex items-center gap-1 rounded-full border border-[#1E3A6E] bg-[#0F1E3A] px-2.5 py-1 text-xs font-semibold text-blue-300"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            SMS
           </button>
         </header>
 
-        <main className="mx-auto max-w-5xl p-4 md:p-6">
+        <main className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
           {tab === 'home' && (
-            <DashboardView
+            <>
+              <button
+                onClick={() => setMagicOpen(true)}
+                className="flex w-full items-center justify-between rounded-2xl border border-[#1E3A6E] bg-[#0F1E3A] px-4 py-3.5 text-left transition hover:border-[#3B82F6]"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3B82F6]/20 text-[#3B82F6]">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-white">
+                      Paste bKash / Nagad SMS or type Banglish command...
+                    </div>
+                    <div className="text-xs text-[#A1A1AA]">
+                      Auto-detects Transfer/Fee, blocks Duplicate TrxID &amp; alerts Balance Mismatch
+                    </div>
+                  </div>
+                </div>
+                <kbd className="hidden sm:inline-block rounded-lg border border-[#1E3A6E] bg-[#0A0A0B] px-2 py-1 text-xs font-semibold text-[#3B82F6]">
+                  ⌘K
+                </kbd>
+              </button>
+
+              <DashboardView
+                key={refreshTick}
+                books={books}
+                activeBookId={activeBookId}
+                wallets={wallets}
+                contacts={contacts}
+                categories={categories}
+                refreshBase={refreshBase}
+                notify={notify}
+              />
+            </>
+          )}
+
+          {tab === 'contacts' && (
+            <ContactsView
               books={books}
               activeBookId={activeBookId}
               wallets={wallets}
-              contacts={contacts}
-              categories={categories}
               refreshBase={refreshBase}
               notify={notify}
             />
           )}
-          {tab === 'contacts' && (
-            <div className="rounded-2xl border border-[#26262B] bg-[#141417] p-8 text-center">
-              <div className="text-sm font-bold text-white">Contacts Pro &amp; Zero-Dispute Trust Link</div>
-              <p className="mt-1 text-xs text-[#A1A1AA]">
-                Ready for Sprint 2 (next step) — will include Contact Detail Timeline, WhatsApp Summary, Revoke Link &amp; Public Confirm/Flag view.
-              </p>
-            </div>
-          )}
+
           {tab === 'store' && (
             <div className="rounded-2xl border border-[#26262B] bg-[#141417] p-8 text-center">
               <div className="text-sm font-bold text-white">Store POS, Manual MRP Override &amp; Daily Cash Closing</div>
               <p className="mt-1 text-xs text-[#A1A1AA]">
-                Ready for Sprint 3 — database tables &amp; demo products are already seeded.
+                Next up in Sprint 3 — database tables &amp; demo products are already live.
               </p>
             </div>
           )}
+
           {tab === 'reports' && (
             <div className="rounded-2xl border border-[#26262B] bg-[#141417] p-8 text-center">
-              <div className="text-sm font-bold text-white">Reports, Category Charts &amp; CSV/JSON/PDF Export</div>
-              <p className="mt-1 text-xs text-[#A1A1AA]">Ready for Sprint 3.</p>
+              <div className="text-sm font-bold text-white">Reports, Category/Tag Breakdown &amp; CSV/JSON/PDF Export</div>
+              <p className="mt-1 text-xs text-[#A1A1AA]">Next up in Sprint 3.</p>
             </div>
           )}
         </main>
       </div>
 
-      {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 border-t border-[#26262B] bg-[#141417] py-2">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -249,6 +315,17 @@ export default function App() {
           );
         })}
       </nav>
+
+      <MagicBarModal
+        open={magicOpen}
+        onClose={() => setMagicOpen(false)}
+        books={books}
+        activeBookId={activeBookId}
+        wallets={wallets}
+        contacts={contacts}
+        onSaved={refreshBase}
+        notify={notify}
+      />
 
       {toast && (
         <div

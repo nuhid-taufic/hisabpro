@@ -27,9 +27,12 @@ const createTxSchema = z.object({
   walletId: z.string().nullable().optional(),
   targetWalletId: z.string().nullable().optional(),
   contactId: z.string().nullable().optional(),
+  newContactName: z.string().trim().min(1).max(80).optional(),
   categoryId: z.string().nullable().optional(),
   tags: z.array(z.string().trim().min(1)).default([]),
   note: z.string().trim().max(300).optional(),
+  externalTrxId: z.string().trim().max(64).optional(),
+  rawInputText: z.string().max(1000).optional(),
   transactionDate: z.string().optional(),
 });
 
@@ -100,6 +103,7 @@ router.get(
         {
           OR: [
             { note: { contains: q, mode: 'insensitive' } },
+            { externalTrxId: { contains: q, mode: 'insensitive' } },
             { contact: { name: { contains: q, mode: 'insensitive' } } },
             { category: { name: { contains: q, mode: 'insensitive' } } },
             { tags: { some: { tag: { name: { contains: q.replace(/^#/, ''), mode: 'insensitive' } } } } },
@@ -132,6 +136,15 @@ router.post(
     const userId = req.user.userId;
     const body = createTxSchema.parse(req.body);
 
+    if (body.externalTrxId) {
+      const dup = await req.prisma.transaction.findFirst({
+        where: { userId, externalTrxId: body.externalTrxId, deletedAt: null },
+      });
+      if (dup) {
+        throw new AppError(`Duplicate SMS blocked: TrxID ${body.externalTrxId} already recorded.`, 409);
+      }
+    }
+
     const resolvedWalletId = body.type === 'CREDIT_EXPENSE' ? null : body.walletId || null;
     const resolvedTargetId = body.type === 'TRANSFER' ? body.targetWalletId || null : null;
 
@@ -147,8 +160,8 @@ router.post(
     const needsContact = ['LEND', 'BORROW', 'CREDIT_EXPENSE', 'SETTLEMENT_IN', 'SETTLEMENT_OUT'].includes(
       body.type
     );
-    if (needsContact && !body.contactId) {
-      throw new AppError(`${body.type} requires selecting a Contact.`, 400);
+    if (needsContact && !body.contactId && !body.newContactName) {
+      throw new AppError(`${body.type} requires selecting or naming a Contact.`, 400);
     }
 
     const bdtAmount =
@@ -169,6 +182,21 @@ router.post(
 
       if (!book) throw new AppError('Ledger book not found.', 404);
 
+      let resolvedContactId = body.contactId || null;
+      if (!resolvedContactId && body.newContactName) {
+        const existingContact = await tx.contact.findFirst({
+          where: { userId, name: { equals: body.newContactName, mode: 'insensitive' } },
+        });
+        if (existingContact) {
+          resolvedContactId = existingContact.id;
+        } else {
+          const createdContact = await tx.contact.create({
+            data: { userId, name: body.newContactName, type: 'FRIEND' },
+          });
+          resolvedContactId = createdContact.id;
+        }
+      }
+
       if (resolvedWalletId && deltas.sourceWalletDelta !== 0n) {
         const w = await tx.wallet.findFirst({ where: { id: resolvedWalletId, userId } });
         if (!w) throw new AppError('Source wallet not found.', 404);
@@ -187,8 +215,8 @@ router.post(
         });
       }
 
-      if (body.contactId && deltas.contactNetDelta !== 0n) {
-        const c = await tx.contact.findFirst({ where: { id: body.contactId, userId } });
+      if (resolvedContactId && deltas.contactNetDelta !== 0n) {
+        const c = await tx.contact.findFirst({ where: { id: resolvedContactId, userId } });
         if (!c) throw new AppError('Contact not found.', 404);
         await tx.contact.update({
           where: { id: c.id },
@@ -219,9 +247,11 @@ router.post(
           exchangeRate: body.exchangeRate ?? null,
           walletId: resolvedWalletId,
           targetWalletId: resolvedTargetId,
-          contactId: body.contactId || null,
+          contactId: resolvedContactId,
           categoryId: body.categoryId || null,
           note: body.note || null,
+          externalTrxId: body.externalTrxId || null,
+          rawInputText: body.rawInputText || null,
           transactionDate: body.transactionDate ? new Date(body.transactionDate) : new Date(),
           tags: { create: tagRecords.map((t) => ({ tagId: t.id })) },
         },
@@ -278,7 +308,7 @@ router.delete(
 
       return tx.transaction.update({
         where: { id: existing.id },
-        data: { deletedAt: new Date() },
+        data: { deletedAt: new Date(), externalTrxId: null },
       });
     });
 
