@@ -1,9 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const { z } = require('zod');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, JWT_VERIFY_OPTS } = require('../middleware/auth');
+const { authLimiter, resetLimiter, getClientMeta } = require('../middleware/security');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
 const {
   normalizeAndValidateEmail,
@@ -13,11 +15,22 @@ const {
 
 const router = express.Router();
 
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
+
+const strongPasswordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password is too long')
+  .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), {
+    message: 'Password must include both letters and numbers',
+  });
+
 const registerSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(80),
   email: z.string().optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: strongPasswordSchema,
   preferredLanguage: z.enum(['en', 'bn']).default('en'),
 });
 
@@ -25,7 +38,7 @@ const loginSchema = z.object({
   identifier: z.string().optional(),
   email: z.string().optional(),
   phone: z.string().optional(),
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().min(1, 'Password is required').max(128),
 });
 
 const googleSchema = z.object({
@@ -40,7 +53,7 @@ const preferencesSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().optional(),
-  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  newPassword: strongPasswordSchema,
 });
 
 const resetRequestSchema = z.object({
@@ -54,7 +67,8 @@ const resetStatusSchema = z.object({
 
 const resetCompleteSchema = z.object({
   identifier: z.string().trim().min(3),
-  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  approvalCode: z.string().trim().min(4, 'Admin Approval Code is required').max(16),
+  newPassword: strongPasswordSchema,
 });
 
 const USER_PUBLIC_SELECT = {
@@ -83,7 +97,7 @@ function getCookieOptions() {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 24 * 60 * 60 * 1000,
     path: '/',
   };
 }
@@ -92,10 +106,22 @@ function issueSessionCookie(res, user, extraClaims = {}) {
   const token = jwt.sign(
     { userId: user.id, email: user.email, tv: user.tokenVersion ?? 0, ...extraClaims },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    {
+      algorithm: 'HS256',
+      issuer: 'hisabpro-api',
+      audience: 'hisabpro-client',
+      expiresIn: '24h',
+    }
   );
   res.cookie('hp_token', token, getCookieOptions());
   return token;
+}
+
+function safeEqualString(a, b) {
+  const bufA = Buffer.from(String(a || ''), 'utf8');
+  const bufB = Buffer.from(String(b || ''), 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 async function seedStarterWorkspace(tx, userId) {
@@ -140,6 +166,7 @@ async function findUserByIdentifier(prisma, rawIdentifier) {
 
 router.post(
   '/register',
+  authLimiter,
   asyncHandler(async (req, res) => {
     const body = registerSchema.parse(req.body);
 
@@ -189,6 +216,7 @@ router.post(
 
 router.post(
   '/login',
+  authLimiter,
   asyncHandler(async (req, res) => {
     const body = loginSchema.parse(req.body);
     const rawId = body.identifier || body.email || body.phone || '';
@@ -198,16 +226,46 @@ router.post(
     if (user.status !== 'ACTIVE') {
       throw new AppError(`Your account is ${user.status.toLowerCase()}. Contact administrator.`, 403);
     }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const minsLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw new AppError(
+        `Account temporarily locked after failed attempts. Try again in ${minsLeft} min or ask Admin to unlock.`,
+        423
+      );
+    }
+
     if (!user.passwordHash) {
       throw new AppError('This account uses Google Sign-In. Please continue with Google.', 400);
     }
 
     const valid = await bcrypt.compare(body.password, user.passwordHash);
-    if (!valid) throw new AppError('Invalid email/phone or password.', 401);
+    if (!valid) {
+      const nextFails = (user.failedLoginAttempts || 0) + 1;
+      const shouldLock = nextFails >= MAX_LOGIN_ATTEMPTS;
+      await req.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: nextFails,
+          ...(shouldLock ? { lockedUntil: new Date(Date.now() + LOCKOUT_MS) } : {}),
+        },
+      });
+      if (shouldLock) {
+        throw new AppError(
+          'Too many failed login attempts. Account locked for 15 minutes.',
+          423
+        );
+      }
+      throw new AppError('Invalid email/phone or password.', 401);
+    }
 
     const updated = await req.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+      },
       select: USER_PUBLIC_SELECT,
     });
 
@@ -219,6 +277,7 @@ router.post(
 
 router.post(
   '/google',
+  authLimiter,
   asyncHandler(async (req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
@@ -262,6 +321,8 @@ router.post(
           googleId,
           avatarUrl: avatarUrl || user.avatarUrl,
           authProvider: user.passwordHash ? 'BOTH' : 'GOOGLE',
+          failedLoginAttempts: 0,
+          lockedUntil: null,
           lastLoginAt: new Date(),
         },
         select: USER_PUBLIC_SELECT,
@@ -342,7 +403,7 @@ router.post(
 
     let decoded;
     try {
-      decoded = jwt.verify(returnToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(returnToken, process.env.JWT_SECRET, JWT_VERIFY_OPTS);
     } catch {
       throw new AppError('Admin restore session expired. Please sign in again.', 401);
     }
@@ -355,6 +416,7 @@ router.post(
       throw new AppError('Admin account is no longer valid.', 403);
     }
 
+    const meta = getClientMeta(req);
     await req.prisma.adminAuditLog.create({
       data: {
         adminId: admin.id,
@@ -362,6 +424,7 @@ router.post(
         targetEmail: req.user.email || req.user.phone || 'unknown',
         action: 'STOP_IMPERSONATION',
         details: 'Returned to dedicated CRM session',
+        ...meta,
       },
     });
 
@@ -412,6 +475,7 @@ router.post(
 
 router.post(
   '/password-reset/request',
+  resetLimiter,
   asyncHandler(async (req, res) => {
     const body = resetRequestSchema.parse(req.body);
     const { parsed, user } = await findUserByIdentifier(req.prisma, body.identifier);
@@ -444,7 +508,7 @@ router.post(
           },
           message:
             existing.status === 'APPROVED'
-              ? 'Your reset request is already APPROVED! You can set a new password now.'
+              ? 'Your reset request is APPROVED! Enter the 6-digit Approval Code from Admin to set a new password.'
               : 'A reset request is already pending Admin approval.',
         });
       }
@@ -462,13 +526,14 @@ router.post(
     res.status(201).json({
       success: true,
       request: { id: created.id, status: created.status, createdAt: created.createdAt },
-      message: 'Password reset request sent to Admin. Once approved, you can set a new password.',
+      message: 'Password reset request sent to Admin. Once approved, enter the Admin Approval Code here.',
     });
   })
 );
 
 router.post(
   '/password-reset/status',
+  resetLimiter,
   asyncHandler(async (req, res) => {
     const body = resetStatusSchema.parse(req.body);
     const { user } = await findUserByIdentifier(req.prisma, body.identifier);
@@ -502,6 +567,7 @@ router.post(
 
 router.post(
   '/password-reset/complete',
+  resetLimiter,
   asyncHandler(async (req, res) => {
     const body = resetCompleteSchema.parse(req.body);
     const { user } = await findUserByIdentifier(req.prisma, body.identifier);
@@ -512,7 +578,7 @@ router.post(
       orderBy: { updatedAt: 'desc' },
     });
 
-    if (!approvedReq) {
+    if (!approvedReq || !approvedReq.approvalCode) {
       throw new AppError('Password reset has not been approved by Admin yet.', 403);
     }
 
@@ -524,6 +590,26 @@ router.post(
       throw new AppError('Approval expired. Please submit a new reset request.', 400);
     }
 
+    const suppliedCode = body.approvalCode.trim().toUpperCase();
+    const expectedCode = approvedReq.approvalCode.trim().toUpperCase();
+
+    if (!safeEqualString(suppliedCode, expectedCode)) {
+      const tries = (approvedReq.failedAttempts || 0) + 1;
+      await req.prisma.passwordResetRequest.update({
+        where: { id: approvedReq.id },
+        data: {
+          failedAttempts: tries,
+          ...(tries >= 5 ? { status: 'REJECTED', adminNote: 'Too many wrong approval codes' } : {}),
+        },
+      });
+      throw new AppError(
+        tries >= 5
+          ? 'Too many wrong approval codes. Request cancelled — submit a new request.'
+          : 'Invalid Admin Approval Code.',
+        403
+      );
+    }
+
     const passwordHash = await bcrypt.hash(body.newPassword, 12);
 
     await req.prisma.$transaction([
@@ -533,11 +619,13 @@ router.post(
           passwordHash,
           authProvider: user.googleId ? 'BOTH' : user.authProvider,
           tokenVersion: { increment: 1 },
+          failedLoginAttempts: 0,
+          lockedUntil: null,
         },
       }),
       req.prisma.passwordResetRequest.update({
         where: { id: approvedReq.id },
-        data: { status: 'COMPLETED' },
+        data: { status: 'COMPLETED', approvalCode: null },
       }),
     ]);
 

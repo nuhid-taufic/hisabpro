@@ -18,6 +18,7 @@ export default function AuthScreen({ onAuthenticated, notify }) {
   const [resetId, setResetId] = useState('');
   const [resetReason, setResetReason] = useState('');
   const [resetStatus, setResetStatus] = useState(null);
+  const [approvalCode, setApprovalCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -168,7 +169,7 @@ export default function AuthScreen({ onAuthenticated, notify }) {
     try {
       const res = await apiFetch('/auth/password-reset/complete', {
         method: 'POST',
-        body: JSON.stringify({ identifier: resetId, newPassword }),
+        body: JSON.stringify({ identifier: resetId, approvalCode, newPassword }),
       });
       notify(res.message);
       setIdentifier(resetId);
@@ -418,9 +419,16 @@ export default function AuthScreen({ onAuthenticated, notify }) {
                       {t('approvedSetNew')}
                     </div>
                     <input
+                      required
+                      value={approvalCode}
+                      onChange={(e) => setApprovalCode(e.target.value.toUpperCase())}
+                      placeholder="6-Digit Admin Approval Code (e.g. A1B2C3)"
+                      className="w-full rounded-xl border border-[#10B981]/50 bg-[#141417] px-3 py-2.5 font-mono uppercase tracking-widest text-white"
+                    />
+                    <input
                       type="password"
                       required
-                      minLength={6}
+                      minLength={8}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder={t('newPassword')}

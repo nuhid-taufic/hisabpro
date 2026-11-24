@@ -6,6 +6,7 @@ export async function apiFetch(path, options = {}) {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'HisabPro-Client',
       ...(options.headers || {}),
     },
   });

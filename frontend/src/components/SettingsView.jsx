@@ -12,6 +12,7 @@ export default function SettingsView({ user, onUserUpdated, notify }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [approvalCode, setApprovalCode] = useState('');
   const [reason, setReason] = useState('');
   const [resetStatus, setResetStatus] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -116,7 +117,7 @@ export default function SettingsView({ user, onUserUpdated, notify }) {
     try {
       const res = await apiFetch('/auth/password-reset/complete', {
         method: 'POST',
-        body: JSON.stringify({ identifier: userIdentifier, newPassword }),
+        body: JSON.stringify({ identifier: userIdentifier, approvalCode, newPassword }),
       });
       setNewPassword('');
       setConfirmPassword('');
@@ -312,6 +313,13 @@ export default function SettingsView({ user, onUserUpdated, notify }) {
                     <CheckCircle2 className="h-4 w-4" />
                     {t('approvedSetNew')}
                   </div>
+                  <input
+                    required
+                    value={approvalCode}
+                    onChange={(e) => setApprovalCode(e.target.value.toUpperCase())}
+                    placeholder="6-Digit Admin Approval Code"
+                    className="w-full rounded-xl border border-[#10B981]/50 bg-[#0A0A0B] px-3 py-2 font-mono uppercase tracking-widest text-white"
+                  />
                   <input
                     type="password"
                     required

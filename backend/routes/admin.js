@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
+const { getClientMeta } = require('../middleware/security');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
 const { serialize } = require('../utils/money');
 const {
@@ -14,6 +15,14 @@ const {
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
+
+const strongPasswordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128)
+  .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), {
+    message: 'Password must include both letters and numbers',
+  });
 
 const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
@@ -29,7 +38,7 @@ const adminCreateUserSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.string().optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
-  password: z.string().min(6),
+  password: strongPasswordSchema,
   role: z.enum(['USER', 'ADMIN']).default('USER'),
   plan: z.enum(['FREE', 'PRO', 'BUSINESS']).default('FREE'),
   crmStage: z.enum(['LEAD', 'ONBOARDING', 'ACTIVE_USER', 'VIP', 'CHURNED']).default('ONBOARDING'),
@@ -38,7 +47,7 @@ const adminCreateUserSchema = z.object({
 });
 
 const resetPasswordSchema = z.object({
-  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  newPassword: strongPasswordSchema,
 });
 
 const reviewResetSchema = z.object({
@@ -142,6 +151,8 @@ router.get(
         crmStage: true,
         preferredLanguage: true,
         crmNotes: true,
+        failedLoginAttempts: true,
+        lockedUntil: true,
         lastLoginAt: true,
         createdAt: true,
         _count: {
@@ -185,30 +196,13 @@ router.get(
 
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const header = [
-      'Name',
-      'Email',
-      'Phone',
-      'Role',
-      'Status',
-      'Plan',
-      'CRM Stage',
-      'Language',
-      'Provider',
-      'Last Login',
-      'Created At',
-      'Notes',
+      'Name', 'Email', 'Phone', 'Role', 'Status', 'Plan',
+      'CRM Stage', 'Language', 'Provider', 'Last Login', 'Created At', 'Notes',
     ];
     const rows = users.map((u) =>
       [
-        u.name,
-        u.email || '',
-        u.phone || '',
-        u.role,
-        u.status,
-        u.plan,
-        u.crmStage,
-        u.preferredLanguage,
-        u.authProvider,
+        u.name, u.email || '', u.phone || '', u.role, u.status, u.plan,
+        u.crmStage, u.preferredLanguage, u.authProvider,
         u.lastLoginAt ? u.lastLoginAt.toISOString().slice(0, 10) : '',
         u.createdAt.toISOString().slice(0, 10),
         u.crmNotes || '',
@@ -243,6 +237,8 @@ router.get(
         preferredLanguage: true,
         crmNotes: true,
         tokenVersion: true,
+        failedLoginAttempts: true,
+        lockedUntil: true,
         lastLoginAt: true,
         createdAt: true,
         wallets: { select: { id: true, name: true, type: true, balancePaisa: true } },
@@ -288,6 +284,7 @@ router.post(
       throw new AppError('Phone number already exists.', 409);
     }
 
+    const meta = getClientMeta(req);
     const passwordHash = await bcrypt.hash(body.password, 12);
     const created = await req.prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
@@ -324,6 +321,7 @@ router.post(
           targetEmail: u.email || u.phone,
           action: 'CREATE_USER',
           details: `Created user role=${body.role}, plan=${body.plan}`,
+          ...meta,
         },
       });
       return u;
@@ -354,6 +352,7 @@ router.patch(
     }
 
     const shouldRevokeSession = body.status && body.status !== 'ACTIVE';
+    const meta = getClientMeta(req);
 
     const updated = await req.prisma.$transaction(async (tx) => {
       const u = await tx.user.update({
@@ -366,6 +365,7 @@ router.patch(
           ...(body.crmStage !== undefined ? { crmStage: body.crmStage } : {}),
           ...(body.preferredLanguage !== undefined ? { preferredLanguage: body.preferredLanguage } : {}),
           ...(body.crmNotes !== undefined ? { crmNotes: body.crmNotes } : {}),
+          ...(body.status === 'ACTIVE' ? { failedLoginAttempts: 0, lockedUntil: null } : {}),
           ...(shouldRevokeSession ? { tokenVersion: { increment: 1 } } : {}),
         },
         select: {
@@ -389,6 +389,7 @@ router.patch(
           targetEmail: target.email || target.phone,
           action: 'UPDATE_USER',
           details: JSON.stringify(body),
+          ...meta,
         },
       });
 
@@ -396,6 +397,34 @@ router.patch(
     });
 
     res.json(serialize({ success: true, user: updated }));
+  })
+);
+
+router.post(
+  '/users/:id/unlock',
+  asyncHandler(async (req, res) => {
+    const target = await req.prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!target) throw new AppError('User not found.', 404);
+
+    const meta = getClientMeta(req);
+    await req.prisma.$transaction([
+      req.prisma.user.update({
+        where: { id: target.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      }),
+      req.prisma.adminAuditLog.create({
+        data: {
+          adminId: req.user.userId,
+          targetUserId: target.id,
+          targetEmail: target.email || target.phone,
+          action: 'UNLOCK_USER',
+          details: 'Cleared brute-force lockout',
+          ...meta,
+        },
+      }),
+    ]);
+
+    res.json({ success: true, message: `Unlocked ${target.name}.` });
   })
 );
 
@@ -436,27 +465,29 @@ router.post(
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 4 * 60 * 60 * 1000,
+      maxAge: 2 * 60 * 60 * 1000,
       path: '/',
+    };
+
+    const jwtOpts = {
+      algorithm: 'HS256',
+      issuer: 'hisabpro-api',
+      audience: 'hisabpro-client',
     };
 
     const returnToken = jwt.sign(
       { userId: admin.id, email: admin.email, tv: admin.tokenVersion },
       process.env.JWT_SECRET,
-      { expiresIn: '4h' }
+      { ...jwtOpts, expiresIn: '2h' }
     );
 
     const impToken = jwt.sign(
-      {
-        userId: target.id,
-        email: target.email,
-        tv: target.tokenVersion,
-        impersonatedBy: admin.id,
-      },
+      { userId: target.id, email: target.email, tv: target.tokenVersion, impersonatedBy: admin.id },
       process.env.JWT_SECRET,
-      { expiresIn: '2h' }
+      { ...jwtOpts, expiresIn: '1h' }
     );
 
+    const meta = getClientMeta(req);
     await req.prisma.adminAuditLog.create({
       data: {
         adminId: admin.id,
@@ -464,6 +495,7 @@ router.post(
         targetEmail: target.email || target.phone,
         action: 'IMPERSONATE_USER',
         details: `Admin ${admin.email} logged in as ${target.name}`,
+        ...meta,
       },
     });
 
@@ -490,6 +522,7 @@ router.post(
     const target = await req.prisma.user.findUnique({ where: { id: req.params.id } });
     if (!target) throw new AppError('User not found.', 404);
 
+    const meta = getClientMeta(req);
     await req.prisma.$transaction([
       req.prisma.user.update({
         where: { id: target.id },
@@ -502,6 +535,7 @@ router.post(
           targetEmail: target.email || target.phone,
           action: 'FORCE_LOGOUT',
           details: 'Invalidated all active sessions',
+          ...meta,
         },
       }),
     ]);
@@ -517,6 +551,7 @@ router.post(
     const target = await req.prisma.user.findUnique({ where: { id: req.params.id } });
     if (!target) throw new AppError('User not found.', 404);
 
+    const meta = getClientMeta(req);
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await req.prisma.$transaction([
       req.prisma.user.update({
@@ -525,6 +560,8 @@ router.post(
           passwordHash,
           authProvider: target.googleId ? 'BOTH' : target.authProvider,
           tokenVersion: { increment: 1 },
+          failedLoginAttempts: 0,
+          lockedUntil: null,
         },
       }),
       req.prisma.adminAuditLog.create({
@@ -534,6 +571,7 @@ router.post(
           targetEmail: target.email || target.phone,
           action: 'RESET_PASSWORD',
           details: 'Admin manually reset password',
+          ...meta,
         },
       }),
     ]);
@@ -554,6 +592,7 @@ router.delete(
       throw new AppError('Cannot delete a SUPER_ADMIN account.', 403);
     }
 
+    const meta = getClientMeta(req);
     await req.prisma.$transaction([
       req.prisma.adminAuditLog.create({
         data: {
@@ -562,6 +601,7 @@ router.delete(
           targetEmail: target.email || target.phone,
           action: 'DELETE_USER',
           details: `Permanently removed user ${target.name}`,
+          ...meta,
         },
       }),
       req.prisma.user.delete({ where: { id: target.id } }),
@@ -601,6 +641,7 @@ router.post(
 
     const approvalCode = crypto.randomBytes(3).toString('hex').toUpperCase();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const meta = getClientMeta(req);
 
     const updated = await req.prisma.$transaction(async (tx) => {
       const r = await tx.passwordResetRequest.update({
@@ -608,6 +649,7 @@ router.post(
         data: {
           status: 'APPROVED',
           approvalCode,
+          failedAttempts: 0,
           adminNote: body.adminNote || 'Approved by Admin (Valid 24 hours)',
           approvedById: req.user.userId,
           expiresAt,
@@ -619,7 +661,8 @@ router.post(
           targetUserId: existing.userId,
           targetEmail: existing.user.email || existing.user.phone,
           action: 'APPROVE_PASSWORD_RESET',
-          details: `Approved password reset request (${approvalCode})`,
+          details: `Approved reset request (Code issued)`,
+          ...meta,
         },
       });
       return r;
@@ -642,6 +685,7 @@ router.post(
       throw new AppError(`Request is already ${existing.status}.`, 400);
     }
 
+    const meta = getClientMeta(req);
     const updated = await req.prisma.$transaction(async (tx) => {
       const r = await tx.passwordResetRequest.update({
         where: { id: existing.id },
@@ -658,6 +702,7 @@ router.post(
           targetEmail: existing.user.email || existing.user.phone,
           action: 'REJECT_PASSWORD_RESET',
           details: body.adminNote || 'Rejected password reset request',
+          ...meta,
         },
       });
       return r;
@@ -686,6 +731,7 @@ router.post(
       body.expiresInHours && body.expiresInHours > 0
         ? new Date(Date.now() + body.expiresInHours * 60 * 60 * 1000)
         : null;
+    const meta = getClientMeta(req);
 
     const announcement = await req.prisma.$transaction(async (tx) => {
       const created = await tx.announcement.create({
@@ -703,6 +749,7 @@ router.post(
           adminId: req.user.userId,
           action: 'CREATE_ANNOUNCEMENT',
           details: `[${body.type}] ${body.title} (Target: ${body.targetPlan})`,
+          ...meta,
         },
       });
       return created;
@@ -734,6 +781,7 @@ router.delete(
     const existing = await req.prisma.announcement.findUnique({ where: { id: req.params.id } });
     if (!existing) throw new AppError('Announcement not found.', 404);
 
+    const meta = getClientMeta(req);
     await req.prisma.$transaction([
       req.prisma.announcement.delete({ where: { id: existing.id } }),
       req.prisma.adminAuditLog.create({
@@ -741,6 +789,7 @@ router.delete(
           adminId: req.user.userId,
           action: 'DELETE_ANNOUNCEMENT',
           details: `Deleted announcement: ${existing.title}`,
+          ...meta,
         },
       }),
     ]);

@@ -88,25 +88,27 @@ enum StockMovementReason {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  name         String
-  email        String?    @unique
-  phone        String?    @unique
-  passwordHash String?
-  googleId     String?    @unique
-  avatarUrl    String?
-  authProvider String     @default("LOCAL")
-  role         Role       @default(USER)
-  status       UserStatus @default(ACTIVE)
-  plan         String     @default("FREE")
-  crmStage     String     @default("ACTIVE_USER")
-  crmNotes     String?
-  tokenVersion Int        @default(0)
-  lastLoginAt  DateTime?
-  baseCurrency      String     @default("BDT")
-  preferredLanguage String     @default("en")
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id                  String     @id @default(cuid())
+  name                String
+  email               String?    @unique
+  phone               String?    @unique
+  passwordHash        String?
+  googleId            String?    @unique
+  avatarUrl           String?
+  authProvider        String     @default("LOCAL")
+  role                Role       @default(USER)
+  status              UserStatus @default(ACTIVE)
+  plan                String     @default("FREE")
+  crmStage            String     @default("ACTIVE_USER")
+  crmNotes            String?
+  tokenVersion        Int        @default(0)
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  baseCurrency        String     @default("BDT")
+  preferredLanguage   String     @default("en")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   books             LedgerBook[]
   wallets           Wallet[]
@@ -124,17 +126,18 @@ model User {
 }
 
 model PasswordResetRequest {
-  id           String             @id @default(cuid())
-  userId       String
-  identifier   String
-  reason       String?
-  status       ResetRequestStatus @default(PENDING)
-  approvalCode String?
-  adminNote    String?
-  approvedById String?
-  expiresAt    DateTime?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id             String             @id @default(cuid())
+  userId         String
+  identifier     String
+  reason         String?
+  status         ResetRequestStatus @default(PENDING)
+  approvalCode   String?
+  failedAttempts Int                @default(0)
+  adminNote      String?
+  approvedById   String?
+  expiresAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   user       User  @relation("UserResetRequests", fields: [userId], references: [id], onDelete: Cascade)
   approvedBy User? @relation("AdminResetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
@@ -166,6 +169,8 @@ model AdminAuditLog {
   targetEmail  String?
   action       String
   details      String?
+  ipAddress    String?
+  userAgent    String?
   createdAt    DateTime @default(now())
 
   admin User @relation("AdminActor", fields: [adminId], references: [id], onDelete: Cascade)
@@ -284,10 +289,10 @@ model Transaction {
 
   user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   book                  LedgerBook        @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  wallet                Wallet?           @relation("SourceWallet", fields: [walletId], references: [id])
-  targetWallet          Wallet?           @relation("TargetWallet", fields: [targetWalletId], references: [id])
-  contact               Contact?          @relation(fields: [contactId], references: [id])
-  category              Category?         @relation(fields: [categoryId], references: [id])
+  wallet                Wallet?           @relation("SourceWallet", fields: [walletId], references: [id], onDelete: SetNull)
+  targetWallet          Wallet?           @relation("TargetWallet", fields: [targetWalletId], references: [id], onDelete: SetNull)
+  contact               Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  category              Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   tags                  TransactionTag[]
   stockOrder            StockOrder?
   cashClosingAdjustment DailyCashClosing? @relation("CashClosingAdjustment")
@@ -353,8 +358,8 @@ model StockOrder {
 
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   book        LedgerBook       @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  contact     Contact?         @relation(fields: [contactId], references: [id])
-  transaction Transaction?     @relation(fields: [transactionId], references: [id])
+  contact     Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  transaction Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
   items       StockOrderItem[]
   movements   StockMovement[]
 
@@ -374,7 +379,7 @@ model StockOrderItem {
   lineTotalPaisa     BigInt
 
   order   StockOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product    @relation(fields: [productId], references: [id])
+  product Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
@@ -414,8 +419,8 @@ model DailyCashClosing {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   book         LedgerBook   @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  wallet       Wallet       @relation(fields: [walletId], references: [id])
-  adjustmentTx Transaction? @relation("CashClosingAdjustment", fields: [adjustmentTxId], references: [id])
+  wallet       Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  adjustmentTx Transaction? @relation("CashClosingAdjustment", fields: [adjustmentTxId], references: [id], onDelete: SetNull)
 
   @@unique([bookId, walletId, closingDate])
   @@index([userId, bookId, closingDate(sort: Desc)])

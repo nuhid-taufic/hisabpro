@@ -910,6 +910,22 @@ export default function DedicatedAdminCrm({
                         {reqItem.identifier} • {fmtDate(reqItem.createdAt)}
                       </div>
                       {reqItem.reason && <div className="mt-1 text-zinc-400">{reqItem.reason}</div>}
+                      {reqItem.status === 'APPROVED' && reqItem.approvalCode && (
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#0D4D39] bg-[#062B20] px-2.5 py-1 text-xs">
+                          <span className="text-[#10B981]">Approval Code:</span>
+                          <span className="font-mono font-bold tracking-widest text-white">{reqItem.approvalCode}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(reqItem.approvalCode);
+                              notify('Approval code copied!');
+                            }}
+                            className="rounded bg-[#10B981] px-2 py-0.5 text-[10px] font-bold text-[#062B20]"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {reqItem.status === 'PENDING' && (

@@ -1,5 +1,11 @@
 const jwt = require('jsonwebtoken');
 
+const JWT_VERIFY_OPTS = {
+  algorithms: ['HS256'],
+  issuer: 'hisabpro-api',
+  audience: 'hisabpro-client',
+};
+
 async function requireAuth(req, res, next) {
   const cookieToken = req.cookies?.hp_token;
   const authHeader = req.headers.authorization;
@@ -11,7 +17,7 @@ async function requireAuth(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET, JWT_VERIFY_OPTS);
     const user = await req.prisma.user.findUnique({
       where: { id: payload.userId },
       select: {
@@ -77,4 +83,4 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+module.exports = { requireAuth, JWT_VERIFY_OPTS };

@@ -24,8 +24,13 @@ function errorHandler(err, _req, res, _next) {
     const target = Array.isArray(err.meta?.target) ? err.meta.target.join(', ') : 'value';
     return res.status(409).json({ success: false, message: `Duplicate entry for ${target}.` });
   }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, message: 'Request payload is too large.' });
+  }
   console.error('[API Error]', err);
-  return res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+  const safeMsg =
+    process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message || 'Internal server error';
+  return res.status(500).json({ success: false, message: safeMsg });
 }
 
 module.exports = { AppError, asyncHandler, errorHandler };

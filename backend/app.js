@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { PrismaClient } = require('@prisma/client');
 const { errorHandler } = require('./middleware/errorHandler');
+const { apiLimiter, publicTrustLimiter, csrfOriginGuard } = require('./middleware/security');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
@@ -22,15 +23,26 @@ const trustRoutes = require('./routes/trust');
 const prisma = new PrismaClient();
 const app = express();
 
-app.use(helmet({ crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' } }));
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+app.use(
+  helmet({
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  })
+);
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
+app.use('/api', apiLimiter, csrfOriginGuard);
 
 app.use((req, _res, next) => {
   req.prisma = prisma;
@@ -39,7 +51,7 @@ app.use((req, _res, next) => {
 
 app.get('/api/health', async (_req, res) => {
   await prisma.$queryRaw`SELECT 1`;
-  res.json({ status: 'ok', version: '2.2-crm-full', database: 'connected' });
+  res.json({ status: 'ok', version: '2.3-hardened', database: 'connected' });
 });
 
 app.use('/api/auth', authRoutes);
@@ -53,7 +65,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/parser', parserRoutes);
 app.use('/api/store', storeRoutes);
 app.use('/api/reports', reportsRoutes);
-app.use('/api/public/trust', trustRoutes);
+app.use('/api/public/trust', publicTrustLimiter, trustRoutes);
 
 app.use(errorHandler);
 
