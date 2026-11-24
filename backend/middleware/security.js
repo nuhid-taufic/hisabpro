@@ -43,7 +43,7 @@ function csrfOriginGuard(req, res, next) {
   if (safeMethods.includes(req.method)) return next();
 
   const origin = req.headers.origin;
-  const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
 
   if (origin) {
     if (origin !== allowedOrigin) {

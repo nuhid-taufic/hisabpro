@@ -7,6 +7,7 @@ const { z } = require('zod');
 const { requireAuth, JWT_VERIFY_OPTS } = require('../middleware/auth');
 const { authLimiter, resetLimiter, getClientMeta } = require('../middleware/security');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
+const { getCookieOptions } = require('../utils/cookies');
 const {
   normalizeAndValidateEmail,
   normalizeAndValidatePhone,
@@ -92,15 +93,7 @@ function sanitizeUser(u) {
   return { ...safe, hasPassword: Boolean(passwordHash) };
 }
 
-function getCookieOptions() {
-  return {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000,
-    path: '/',
-  };
-}
+
 
 function issueSessionCookie(res, user, extraClaims = {}) {
   const token = jwt.sign(

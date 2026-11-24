@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { getClientMeta } = require('../middleware/security');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
+const { getCookieOptions } = require('../utils/cookies');
 const { serialize } = require('../utils/money');
 const {
   normalizeAndValidateEmail,
@@ -461,13 +462,7 @@ router.post(
       select: { id: true, name: true, email: true, tokenVersion: true },
     });
 
-    const cookieOpts = {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 2 * 60 * 60 * 1000,
-      path: '/',
-    };
+    const cookieOpts = getCookieOptions(2 * 60 * 60 * 1000);
 
     const jwtOpts = {
       algorithm: 'HS256',
