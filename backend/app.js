@@ -7,6 +7,8 @@ const { PrismaClient } = require('@prisma/client');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
+const announcementRoutes = require('./routes/announcements');
 const bookRoutes = require('./routes/books');
 const walletRoutes = require('./routes/wallets');
 const categoryRoutes = require('./routes/categories');
@@ -20,7 +22,7 @@ const trustRoutes = require('./routes/trust');
 const prisma = new PrismaClient();
 const app = express();
 
-app.use(helmet());
+app.use(helmet({ crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' } }));
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -37,10 +39,12 @@ app.use((req, _res, next) => {
 
 app.get('/api/health', async (_req, res) => {
   await prisma.$queryRaw`SELECT 1`;
-  res.json({ status: 'ok', version: '2.0-complete', database: 'connected' });
+  res.json({ status: 'ok', version: '2.2-crm-full', database: 'connected' });
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/announcements', announcementRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/categories', categoryRoutes);

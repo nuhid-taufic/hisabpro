@@ -7,6 +7,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum ResetRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum AnnouncementType {
+  INFO
+  WARNING
+  PROMO
+  MAINTENANCE
+}
+
 enum BookType {
   PERSONAL
   STORE
@@ -62,13 +88,24 @@ enum StockMovementReason {
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   name         String
-  email        String   @unique
-  passwordHash String
-  baseCurrency String   @default("BDT")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  email        String?    @unique
+  phone        String?    @unique
+  passwordHash String?
+  googleId     String?    @unique
+  avatarUrl    String?
+  authProvider String     @default("LOCAL")
+  role         Role       @default(USER)
+  status       UserStatus @default(ACTIVE)
+  plan         String     @default("FREE")
+  crmStage     String     @default("ACTIVE_USER")
+  crmNotes     String?
+  tokenVersion Int        @default(0)
+  lastLoginAt  DateTime?
+  baseCurrency String     @default("BDT")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   books             LedgerBook[]
   wallets           Wallet[]
@@ -79,6 +116,60 @@ model User {
   products          Product[]
   stockOrders       StockOrder[]
   dailyCashClosings DailyCashClosing[]
+  adminActions      AdminAuditLog[]        @relation("AdminActor")
+  resetRequests     PasswordResetRequest[] @relation("UserResetRequests")
+  approvedResets    PasswordResetRequest[] @relation("AdminResetApprover")
+  announcements     Announcement[]
+}
+
+model PasswordResetRequest {
+  id           String             @id @default(cuid())
+  userId       String
+  identifier   String
+  reason       String?
+  status       ResetRequestStatus @default(PENDING)
+  approvalCode String?
+  adminNote    String?
+  approvedById String?
+  expiresAt    DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  user       User  @relation("UserResetRequests", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("AdminResetApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Announcement {
+  id          String           @id @default(cuid())
+  title       String
+  message     String
+  type        AnnouncementType @default(INFO)
+  targetPlan  String           @default("ALL")
+  isActive    Boolean          @default(true)
+  expiresAt   DateTime?
+  createdById String
+  createdAt   DateTime         @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([isActive, createdAt(sort: Desc)])
+}
+
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  adminId      String
+  targetUserId String?
+  targetEmail  String?
+  action       String
+  details      String?
+  createdAt    DateTime @default(now())
+
+  admin User @relation("AdminActor", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt(sort: Desc)])
 }
 
 model LedgerBook {
@@ -127,8 +218,8 @@ model Contact {
   note            String?
   netBalancePaisa BigInt      @default(0)
 
-  shareToken     String?   @unique
-  isShareEnabled Boolean   @default(false)
+  shareToken     String? @unique
+  isShareEnabled Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

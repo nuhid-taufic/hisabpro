@@ -1,4 +1,4 @@
-export const API_BASE = 'http://localhost:4000/api';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 export async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -28,6 +28,7 @@ export function fmtTk(paisa, decimals = true) {
 }
 
 export function fmtDate(iso) {
+  if (!iso) return 'Never';
   return new Date(iso).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
