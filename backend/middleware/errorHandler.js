@@ -13,11 +13,14 @@ function errorHandler(err, _req, res, _next) {
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({ success: false, message: err.message });
   }
-  if (err instanceof ZodError) {
-    const first = err.errors[0];
+  if (err instanceof ZodError || err?.name === 'ZodError') {
+    const issues = err.issues || err.errors || [];
+    const first = issues[0];
+    const path = Array.isArray(first?.path) && first.path.length > 0 ? first.path.join('.') : 'Input';
+    const message = first?.message || 'Invalid request input.';
     return res.status(400).json({
       success: false,
-      message: `${first.path.join('.') || 'Input'}: ${first.message}`,
+      message: `${path}: ${message}`,
     });
   }
   if (err?.code === 'P2002') {
