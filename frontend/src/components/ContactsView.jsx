@@ -13,10 +13,12 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch, fmtDate, fmtTk, getInitials } from '../lib/api';
+import { useI18n } from '../context/I18nContext';
 
 const ROLES = ['CUSTOMER', 'SUPPLIER', 'BOTH', 'FRIEND', 'CLIENT', 'FAMILY'];
 
 export default function ContactsView({ books, activeBookId, wallets, refreshBase, notify }) {
+  const { t } = useI18n();
   const [contacts, setContacts] = useState([]);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -225,9 +227,9 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Contacts &amp; Party Ledger</h1>
+          <h1 className="text-xl font-bold text-white">{t('contactsTitle')}</h1>
           <p className="text-xs text-[#A1A1AA]">
-            Manage Pabo/Debo timelines and Zero-Dispute Live Trust Links
+            {t('contactsSub')}
           </p>
         </div>
         <button
@@ -235,7 +237,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
           className="inline-flex items-center gap-2 rounded-xl bg-[#3B82F6] px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-500"
         >
           <Plus className="h-4 w-4" />
-          Add Contact Profile
+          {t('addContact')}
         </button>
       </div>
 
@@ -247,7 +249,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name or phone..."
+              placeholder={t('searchContact')}
               className="w-full rounded-xl border border-[#26262B] bg-[#141417] py-2 pl-9 pr-3 text-xs text-white focus:border-[#3B82F6] focus:outline-none"
             />
           </div>
@@ -271,7 +273,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
           <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
             {contacts.length === 0 ? (
               <div className="rounded-xl border border-[#26262B] bg-[#141417] p-6 text-center text-xs text-zinc-500">
-                No contacts match this filter.
+                {t('noContacts')}
               </div>
             ) : (
               contacts.map((c) => {
@@ -366,7 +368,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                   className="inline-flex items-center gap-1.5 rounded-xl bg-[#3B82F6] px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-500"
                 >
                   <Link2 className="h-3.5 w-3.5" />
-                  {selectedContact.isShareEnabled ? 'Copy Live Trust Link' : 'Enable Live Trust Link'}
+                  {selectedContact.isShareEnabled ? t('copyTrustLink') : t('enableTrustLink')}
                 </button>
                 {selectedContact.isShareEnabled && selectedContact.shareToken && (
                   <>
@@ -377,7 +379,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                       className="inline-flex items-center gap-1.5 rounded-xl border border-[#0D4D39] bg-[#062B20] px-3 py-2 text-xs font-semibold text-[#10B981]"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
-                      Open Public View
+                      {t('openPublicView')}
                     </a>
                     <button
                       onClick={revokeTrustLink}
@@ -393,7 +395,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                   className="inline-flex items-center gap-1.5 rounded-xl border border-[#26262B] bg-[#0A0A0B] px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-zinc-600"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  Copy WhatsApp Summary
+                  {t('copyWhatsApp')}
                 </button>
               </div>
 
@@ -406,7 +408,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                   }}
                   className="rounded-xl border border-[#5A1627] bg-[#310B15] py-2.5 text-xs font-semibold text-[#F43F5E]"
                 >
-                  + Dhar Dao
+                  {t('quickLend')}
                 </button>
                 <button
                   onClick={() => {
@@ -415,7 +417,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                   }}
                   className="rounded-xl bg-[#10B981] py-2.5 text-xs font-bold text-[#062B20]"
                 >
-                  ✓ Pabo Adoy
+                  {t('quickReceive')}
                 </button>
                 <button
                   onClick={() => {
@@ -424,7 +426,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                   }}
                   className="rounded-xl border border-[#26262B] bg-[#0A0A0B] py-2.5 text-xs font-semibold text-zinc-200"
                 >
-                  Debo Shodh
+                  {t('quickPay')}
                 </button>
               </div>
 
@@ -480,14 +482,14 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                 </form>
               )}
 
-              {/* History Timeline */}
+              {/* {t('historyTimeline')} */}
               <div className="space-y-2.5">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                  History Timeline ({ledgerTxs.length})
+                  {t('historyTimeline')} ({ledgerTxs.length})
                 </div>
                 {ledgerTxs.length === 0 ? (
                   <div className="rounded-xl border border-[#26262B] bg-[#0A0A0B] p-6 text-center text-xs text-zinc-500">
-                    No entries logged for this contact yet.
+                    {t('noContactEntries')}
                   </div>
                 ) : (
                   ledgerTxs.map((tx) => (
@@ -563,7 +565,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
         </div>
       </div>
 
-      {/* Add Contact Profile Modal */}
+      {/* {t('addContact')} Modal */}
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 md:items-center md:p-4">
           <div className="w-full max-w-md rounded-t-2xl md:rounded-2xl border border-[#26262B] bg-[#141417] p-5">
@@ -573,7 +575,7 @@ export default function ContactsView({ books, activeBookId, wallets, refreshBase
                   {form.name ? getInitials(form.name) : <Contact2 className="h-5 w-5" />}
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Add Contact Profile</h3>
+                  <h3 className="text-base font-bold text-white">{t('addContact')}</h3>
                   <p className="text-xs text-[#A1A1AA]">Duplicate phone check &amp; opening balance</p>
                 </div>
               </div>

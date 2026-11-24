@@ -13,10 +13,12 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch, fmtDate, fmtTk } from '../lib/api';
+import { useI18n } from '../context/I18nContext';
 
 const BD_NOTES = [1000, 500, 200, 100, 50, 20, 10];
 
 export default function StoreView({ books, activeBookId, wallets, contacts, refreshBase, notify }) {
+  const { t } = useI18n();
   const storeBook = useMemo(() => {
     const selected = books.find((b) => b.id === activeBookId && b.bookType === 'STORE');
     return selected || books.find((b) => b.bookType === 'STORE') || books[0] || null;
@@ -287,7 +289,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Store POS, Inventory &amp; Cash Register</h1>
+          <h1 className="text-xl font-bold text-white">{t('storeTitle')}</h1>
           <p className="text-xs text-[#A1A1AA]">
             Store Book: <strong className="text-zinc-200">{storeBook?.name || 'My Store'}</strong>
           </p>
@@ -295,11 +297,11 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
 
         <div className="flex flex-wrap gap-1 rounded-xl border border-[#26262B] bg-[#141417] p-1">
           {[
-            { id: 'pos', label: 'POS Sale / Buy', icon: ShoppingCart },
-            { id: 'inventory', label: 'Inventory', icon: Package },
-            { id: 'orders', label: 'Invoices', icon: Receipt },
-            { id: 'trending', label: 'Trending', icon: Flame },
-            { id: 'closing', label: 'Cash Closing', icon: Calculator },
+            { id: 'pos', label: t('tabPos'), icon: ShoppingCart },
+            { id: 'inventory', label: t('tabInventory'), icon: Package },
+            { id: 'orders', label: t('tabInvoices'), icon: Receipt },
+            { id: 'trending', label: t('tabTrending'), icon: Flame },
+            { id: 'closing', label: t('tabClosing'), icon: Calculator },
           ].map((t) => {
             const Icon = t.icon;
             return (
@@ -324,7 +326,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
           <div className="space-y-3 lg:col-span-6">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-[#A1A1AA]">
-                Tap Product to Add
+                {t('tapProduct')}
               </span>
               <div className="flex rounded-lg border border-[#26262B] bg-[#141417] p-0.5 text-xs">
                 <button
@@ -336,7 +338,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
                     orderType === 'SALE' ? 'bg-[#10B981] text-[#062B20]' : 'text-zinc-400'
                   }`}
                 >
-                  Sale (Becha)
+                  {t('saleMode')}
                 </button>
                 <button
                   onClick={() => {
@@ -347,7 +349,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
                     orderType === 'PURCHASE' ? 'bg-[#3B82F6] text-white' : 'text-zinc-400'
                   }`}
                 >
-                  Purchase (Kena)
+                  {t('purchaseMode')}
                 </button>
               </div>
             </div>
@@ -397,7 +399,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
 
             {cart.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[#26262B] bg-[#0A0A0B] py-8 text-center text-xs text-zinc-500">
-                Click any product on the left to start billing.
+                {t('emptyCart')}
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -571,7 +573,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
 
             <div className="space-y-1 rounded-xl border border-[#26262B] bg-[#0A0A0B] p-3.5 text-xs tabular-nums">
               <div className="flex justify-between text-[#A1A1AA]">
-                <span>Net Bill Total</span>
+                <span>{t('netBillTotal')}</span>
                 <span className="text-sm font-bold text-white">{fmtTk(netTotal * 100)}</span>
               </div>
               <div className="flex justify-between text-[#A1A1AA]">
@@ -605,7 +607,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
             className="h-fit space-y-3 rounded-2xl border border-[#26262B] bg-[#141417] p-5 text-xs lg:col-span-5"
           >
             <h2 className="flex items-center gap-2 text-sm font-bold text-white">
-              <Plus className="h-4 w-4 text-[#3B82F6]" /> Add New Product
+              <Plus className="h-4 w-4 text-[#3B82F6]" /> {t('addProduct')}
             </h2>
             <input
               required
@@ -694,7 +696,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
               type="submit"
               className="w-full rounded-xl bg-[#3B82F6] py-2.5 font-semibold text-white hover:bg-blue-500"
             >
-              Save Product to Stock
+              {t('saveProduct')}
             </button>
           </form>
 
@@ -836,7 +838,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-[#26262B] bg-[#141417] p-5">
-              <h2 className="mb-3 text-sm font-bold text-white">Top Selling Products</h2>
+              <h2 className="mb-3 text-sm font-bold text-white">{t('topSelling')}</h2>
               {trending.topSelling.length === 0 ? (
                 <p className="text-xs text-zinc-500">No sales in this period.</p>
               ) : (
@@ -866,7 +868,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
 
             <div className="space-y-4">
               <div className="rounded-2xl border border-[#5A1627] bg-[#310B15]/25 p-5">
-                <h2 className="mb-3 text-sm font-bold text-[#F43F5E]">Low Stock Restock Radar</h2>
+                <h2 className="mb-3 text-sm font-bold text-[#F43F5E]">{t('lowStockRadar')}</h2>
                 {trending.lowStockRadar.length === 0 ? (
                   <p className="text-xs text-zinc-400">All products are stocked above limit.</p>
                 ) : (
@@ -911,7 +913,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
       {subTab === 'closing' && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
           <div className="space-y-4 rounded-2xl border border-[#26262B] bg-[#141417] p-5 lg:col-span-6">
-            <h2 className="text-sm font-bold text-white">BD Taka Physical Note Counter</h2>
+            <h2 className="text-sm font-bold text-white">{t('noteCounter')}</h2>
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="mb-1 block text-[#A1A1AA]">Cash Box Wallet</label>
@@ -983,10 +985,10 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
 
           <div className="space-y-4 lg:col-span-6">
             <div className="space-y-4 rounded-2xl border border-[#26262B] bg-[#141417] p-5">
-              <h2 className="text-sm font-bold text-white">Expected vs. Physical Cash Box</h2>
+              <h2 className="text-sm font-bold text-white">{t('expectedVsPhysical')}</h2>
               <div className="space-y-2.5 rounded-xl bg-[#0A0A0B] p-4 text-sm tabular-nums">
                 <div className="flex justify-between text-[#A1A1AA]">
-                  <span>Opening Cash</span>
+                  <span>{t('openingCash')}</span>
                   <span className="font-semibold text-white">
                     {fmtTk(expectedData?.openingCashPaisa)}
                   </span>
@@ -1004,11 +1006,11 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
                   </span>
                 </div>
                 <div className="flex justify-between border-t border-[#26262B] pt-2.5 font-bold text-white">
-                  <span>Expected in Cash Box</span>
+                  <span>{t('expectedInBox')}</span>
                   <span>{fmtTk(expectedData?.expectedCashPaisa)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-[#3B82F6]">
-                  <span>Physical Counted Cash</span>
+                  <span>{t('physicalCounted')}</span>
                   <span>{fmtTk(actualCashFinal * 100)}</span>
                 </div>
               </div>
@@ -1046,7 +1048,7 @@ export default function StoreView({ books, activeBookId, wallets, contacts, refr
                 onClick={submitDayClose}
                 className="w-full rounded-xl bg-[#3B82F6] py-3 text-sm font-semibold text-white hover:bg-blue-500"
               >
-                Confirm Day Close &amp; Auto-Reconcile
+                {t('confirmDayClose')}
               </button>
             </div>
 

@@ -63,7 +63,7 @@ describe('Phone/Email Validation, Admin-Approved Reset, Broadcasts & Impersonati
     // Admin logs in & approves
     await adminAgent
       .post('/api/auth/login')
-      .send({ identifier: 'demo@hisabpro.app', password: 'Demo@1234' });
+      .send({ identifier: 'nuhidtaufic.z@gmail.com', password: 'hishab.123' });
     const approveRes = await adminAgent.post(`/api/admin/reset-requests/${resetRequestId}/approve`);
     expect(approveRes.status).toBe(200);
     expect(approveRes.body.request.status).toBe('APPROVED');
@@ -108,6 +108,6 @@ describe('Phone/Email Validation, Admin-Approved Reset, Broadcasts & Impersonati
 
     const back = await adminAgent.post('/api/auth/stop-impersonation');
     expect(back.status).toBe(200);
-    expect(back.body.user.email).toBe('demo@hisabpro.app');
+    expect(back.body.user.email).toBe('nuhidtaufic.z@gmail.com');
   });
 });

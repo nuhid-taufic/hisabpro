@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch, fmtDate, fmtTk } from '../lib/api';
+import { useI18n } from '../context/I18nContext';
 
 const TX_TYPES = [
   { value: 'EXPENSE', label: 'Expense (Khoroch)' },
@@ -32,6 +33,7 @@ export default function DashboardView({
   refreshBase,
   notify,
 }) {
+  const { t } = useI18n();
   const [kpis, setKpis] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [search, setSearch] = useState('');
@@ -216,13 +218,13 @@ export default function DashboardView({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-[#A1A1AA]">
-              Total Net Balance (All Wallets)
+              {t('totalNetBalance')}
             </div>
             <div className="mt-1 text-3xl font-bold text-[#FAFAFA] tabular-nums">
               {fmtTk(kpis?.totalNetBalancePaisa)}
             </div>
             <div className="mt-1 text-xs text-[#A1A1AA] tabular-nums">
-              True Safe-to-Spend (After Debo):{' '}
+              {t('safeToSpend')}:{' '}
               <span className="font-semibold text-[#FAFAFA]">{fmtTk(kpis?.safeToSpendPaisa)}</span>
             </div>
           </div>
@@ -231,31 +233,31 @@ export default function DashboardView({
             className="inline-flex items-center gap-2 rounded-xl bg-[#3B82F6] px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-500"
           >
             <Plus className="h-4 w-4" />
-            New Transaction
+            {t('newTransaction')}
           </button>
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-[#10B981]/30 bg-[#062B20]/40 p-3.5">
-            <div className="text-[10px] font-bold uppercase text-[#10B981]">Mot Pabo (Receivable)</div>
+            <div className="text-[10px] font-bold uppercase text-[#10B981]">{t('motPabo')}</div>
             <div className="mt-1 text-lg font-bold text-white tabular-nums">
               {fmtTk(kpis?.totalPaboPaisa)}
             </div>
           </div>
           <div className="rounded-xl border border-[#F43F5E]/30 bg-[#310B15]/40 p-3.5">
-            <div className="text-[10px] font-bold uppercase text-[#F43F5E]">Mot Debo (Payable)</div>
+            <div className="text-[10px] font-bold uppercase text-[#F43F5E]">{t('motDebo')}</div>
             <div className="mt-1 text-lg font-bold text-white tabular-nums">
               {fmtTk(kpis?.totalDeboPaisa)}
             </div>
           </div>
           <div className="rounded-xl border border-[#26262B] bg-[#0A0A0B] p-3.5">
-            <div className="text-[10px] font-bold uppercase text-[#A1A1AA]">Month Income</div>
+            <div className="text-[10px] font-bold uppercase text-[#A1A1AA]">{t('monthIncome')}</div>
             <div className="mt-1 text-lg font-bold text-[#10B981] tabular-nums">
               {fmtTk(kpis?.monthIncomePaisa)}
             </div>
           </div>
           <div className="rounded-xl border border-[#26262B] bg-[#0A0A0B] p-3.5">
-            <div className="text-[10px] font-bold uppercase text-[#A1A1AA]">Month Expense</div>
+            <div className="text-[10px] font-bold uppercase text-[#A1A1AA]">{t('monthExpense')}</div>
             <div className="mt-1 text-lg font-bold text-[#F43F5E] tabular-nums">
               {fmtTk(kpis?.monthExpensePaisa)}
             </div>
@@ -267,13 +269,13 @@ export default function DashboardView({
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold uppercase tracking-wider text-[#A1A1AA]">
-            Wallets &amp; 1-Click Hisab Milano
+            {t('walletsTitle')}
           </h2>
           <button
             onClick={() => setWalletModalOpen(true)}
             className="rounded-lg border border-[#26262B] bg-[#141417] px-3 py-1 text-xs font-semibold text-zinc-200 hover:border-[#3B82F6]"
           >
-            + Add Wallet
+            {t('addWallet')}
           </button>
         </div>
 
@@ -316,7 +318,7 @@ export default function DashboardView({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search notes, contact, category, or #tag..."
+              placeholder={t('searchTxPlaceholder')}
               className="w-full rounded-xl border border-[#26262B] bg-[#141417] py-2 pl-9 pr-3 text-xs text-white placeholder-zinc-500 focus:border-[#3B82F6] focus:outline-none"
             />
           </div>
@@ -325,7 +327,7 @@ export default function DashboardView({
             onChange={(e) => setTypeFilter(e.target.value)}
             className="rounded-xl border border-[#26262B] bg-[#141417] px-3 py-2 text-xs text-white"
           >
-            <option value="ALL">All Types</option>
+            <option value="ALL">{t('allTypes')}</option>
             {TX_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.value}
@@ -338,7 +340,7 @@ export default function DashboardView({
             onChange={(e) => setWalletFilter(e.target.value)}
             className="rounded-xl border border-[#26262B] bg-[#141417] px-3 py-2 text-xs text-white"
           >
-            <option value="ALL">All Wallets</option>
+            <option value="ALL">{t('allWallets')}</option>
             {wallets.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
@@ -350,7 +352,7 @@ export default function DashboardView({
         <div className="space-y-2">
           {transactions.length === 0 ? (
             <div className="rounded-xl border border-[#26262B] bg-[#141417] p-8 text-center text-xs text-zinc-500">
-              No matching transactions found for this book/filter.
+              {t('noTxsFound')}
             </div>
           ) : (
             transactions.map((tx) => {

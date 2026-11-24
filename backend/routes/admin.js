@@ -21,6 +21,7 @@ const updateUserSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']).optional(),
   plan: z.enum(['FREE', 'PRO', 'BUSINESS']).optional(),
   crmStage: z.enum(['LEAD', 'ONBOARDING', 'ACTIVE_USER', 'VIP', 'CHURNED']).optional(),
+  preferredLanguage: z.enum(['en', 'bn']).optional(),
   crmNotes: z.string().max(1000).nullable().optional(),
 });
 
@@ -32,6 +33,7 @@ const adminCreateUserSchema = z.object({
   role: z.enum(['USER', 'ADMIN']).default('USER'),
   plan: z.enum(['FREE', 'PRO', 'BUSINESS']).default('FREE'),
   crmStage: z.enum(['LEAD', 'ONBOARDING', 'ACTIVE_USER', 'VIP', 'CHURNED']).default('ONBOARDING'),
+  preferredLanguage: z.enum(['en', 'bn']).default('en'),
   crmNotes: z.string().max(500).optional(),
 });
 
@@ -80,7 +82,7 @@ router.get(
       req.prisma.adminAuditLog.findMany({
         include: { admin: { select: { name: true, email: true } } },
         orderBy: { createdAt: 'desc' },
-        take: 25,
+        take: 30,
       }),
     ]);
 
@@ -138,6 +140,7 @@ router.get(
         status: true,
         plan: true,
         crmStage: true,
+        preferredLanguage: true,
         crmNotes: true,
         lastLoginAt: true,
         createdAt: true,
@@ -160,6 +163,68 @@ router.get(
 );
 
 router.get(
+  '/users/export',
+  asyncHandler(async (req, res) => {
+    const users = await req.prisma.user.findMany({
+      select: {
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+        plan: true,
+        crmStage: true,
+        preferredLanguage: true,
+        authProvider: true,
+        lastLoginAt: true,
+        createdAt: true,
+        crmNotes: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = [
+      'Name',
+      'Email',
+      'Phone',
+      'Role',
+      'Status',
+      'Plan',
+      'CRM Stage',
+      'Language',
+      'Provider',
+      'Last Login',
+      'Created At',
+      'Notes',
+    ];
+    const rows = users.map((u) =>
+      [
+        u.name,
+        u.email || '',
+        u.phone || '',
+        u.role,
+        u.status,
+        u.plan,
+        u.crmStage,
+        u.preferredLanguage,
+        u.authProvider,
+        u.lastLoginAt ? u.lastLoginAt.toISOString().slice(0, 10) : '',
+        u.createdAt.toISOString().slice(0, 10),
+        u.crmNotes || '',
+      ]
+        .map(esc)
+        .join(',')
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="hisabpro-crm-users-${today}.csv"`);
+    res.send([header.join(','), ...rows].join('\n'));
+  })
+);
+
+router.get(
   '/users/:id',
   asyncHandler(async (req, res) => {
     const user = await req.prisma.user.findUnique({
@@ -175,6 +240,7 @@ router.get(
         status: true,
         plan: true,
         crmStage: true,
+        preferredLanguage: true,
         crmNotes: true,
         tokenVersion: true,
         lastLoginAt: true,
@@ -234,6 +300,7 @@ router.post(
           role: body.role,
           plan: body.plan,
           crmStage: body.crmStage,
+          preferredLanguage: body.preferredLanguage,
           crmNotes: body.crmNotes || null,
         },
       });
@@ -247,6 +314,7 @@ router.post(
         data: [
           { userId: u.id, name: 'Cash', type: 'CASH' },
           { userId: u.id, name: 'bKash', type: 'MFS' },
+          { userId: u.id, name: 'Shop Cash Box', type: 'CASH' },
         ],
       });
       await tx.adminAuditLog.create({
@@ -296,6 +364,7 @@ router.patch(
           ...(body.status !== undefined ? { status: body.status } : {}),
           ...(body.plan !== undefined ? { plan: body.plan } : {}),
           ...(body.crmStage !== undefined ? { crmStage: body.crmStage } : {}),
+          ...(body.preferredLanguage !== undefined ? { preferredLanguage: body.preferredLanguage } : {}),
           ...(body.crmNotes !== undefined ? { crmNotes: body.crmNotes } : {}),
           ...(shouldRevokeSession ? { tokenVersion: { increment: 1 } } : {}),
         },
@@ -308,6 +377,7 @@ router.patch(
           status: true,
           plan: true,
           crmStage: true,
+          preferredLanguage: true,
           crmNotes: true,
         },
       });
@@ -345,6 +415,7 @@ router.post(
         status: true,
         plan: true,
         baseCurrency: true,
+        preferredLanguage: true,
         tokenVersion: true,
       },
     });
@@ -500,8 +571,6 @@ router.delete(
   })
 );
 
-// ==================== PASSWORD RESET REQUEST APPROVALS ====================
-
 router.get(
   '/reset-requests',
   asyncHandler(async (req, res) => {
@@ -597,8 +666,6 @@ router.post(
     res.json(serialize({ success: true, request: updated }));
   })
 );
-
-// ==================== BROADCAST ANNOUNCEMENTS ====================
 
 router.get(
   '/announcements',

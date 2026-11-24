@@ -18,6 +18,7 @@ const registerSchema = z.object({
   email: z.string().optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  preferredLanguage: z.enum(['en', 'bn']).default('en'),
 });
 
 const loginSchema = z.object({
@@ -29,6 +30,12 @@ const loginSchema = z.object({
 
 const googleSchema = z.object({
   credential: z.string().min(20, 'Valid Google credential token required'),
+});
+
+const preferencesSchema = z.object({
+  preferredLanguage: z.enum(['en', 'bn']).optional(),
+  name: z.string().trim().min(2).max(80).optional(),
+  baseCurrency: z.enum(['BDT', 'USD']).optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -61,6 +68,7 @@ const USER_PUBLIC_SELECT = {
   status: true,
   plan: true,
   baseCurrency: true,
+  preferredLanguage: true,
   tokenVersion: true,
   passwordHash: true,
 };
@@ -148,13 +156,11 @@ router.post(
       throw new AppError('Provide at least a valid email address or a valid phone number.', 400);
     }
 
-    if (email) {
-      const existsEmail = await req.prisma.user.findUnique({ where: { email } });
-      if (existsEmail) throw new AppError('An account with this email already exists.', 409);
+    if (email && (await req.prisma.user.findUnique({ where: { email } }))) {
+      throw new AppError('An account with this email already exists.', 409);
     }
-    if (phone) {
-      const existsPhone = await req.prisma.user.findUnique({ where: { phone } });
-      if (existsPhone) throw new AppError('An account with this phone number already exists.', 409);
+    if (phone && (await req.prisma.user.findUnique({ where: { phone } }))) {
+      throw new AppError('An account with this phone number already exists.', 409);
     }
 
     const passwordHash = await bcrypt.hash(body.password, 12);
@@ -166,6 +172,7 @@ router.post(
           phone,
           passwordHash,
           authProvider: email ? 'LOCAL' : 'PHONE',
+          preferredLanguage: body.preferredLanguage,
           lastLoginAt: new Date(),
         },
         select: USER_PUBLIC_SELECT,
@@ -188,11 +195,9 @@ router.post(
     const { user } = await findUserByIdentifier(req.prisma, rawId);
 
     if (!user) throw new AppError('Invalid email/phone or password.', 401);
-
     if (user.status !== 'ACTIVE') {
       throw new AppError(`Your account is ${user.status.toLowerCase()}. Contact administrator.`, 403);
     }
-
     if (!user.passwordHash) {
       throw new AppError('This account uses Google Sign-In. Please continue with Google.', 400);
     }
@@ -308,6 +313,24 @@ router.get(
   })
 );
 
+router.patch(
+  '/preferences',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const body = preferencesSchema.parse(req.body);
+    const updated = await req.prisma.user.update({
+      where: { id: req.user.userId },
+      data: {
+        ...(body.preferredLanguage !== undefined ? { preferredLanguage: body.preferredLanguage } : {}),
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.baseCurrency !== undefined ? { baseCurrency: body.baseCurrency } : {}),
+      },
+      select: USER_PUBLIC_SELECT,
+    });
+    res.json({ success: true, user: sanitizeUser(updated) });
+  })
+);
+
 router.post(
   '/stop-impersonation',
   requireAuth,
@@ -338,7 +361,7 @@ router.post(
         targetUserId: req.user.userId,
         targetEmail: req.user.email || req.user.phone || 'unknown',
         action: 'STOP_IMPERSONATION',
-        details: 'Returned to admin session',
+        details: 'Returned to dedicated CRM session',
       },
     });
 
@@ -387,26 +410,19 @@ router.post(
   })
 );
 
-// ==================== ADMIN-APPROVED PASSWORD RESET (NO OTP) ====================
-
 router.post(
   '/password-reset/request',
   asyncHandler(async (req, res) => {
     const body = resetRequestSchema.parse(req.body);
     const { parsed, user } = await findUserByIdentifier(req.prisma, body.identifier);
 
-    if (!user) {
-      throw new AppError('No account found with this email or phone number.', 404);
-    }
+    if (!user) throw new AppError('No account found with this email or phone number.', 404);
     if (user.status !== 'ACTIVE') {
       throw new AppError(`Account is ${user.status.toLowerCase()}. Contact administrator.`, 403);
     }
 
     const existing = await req.prisma.passwordResetRequest.findFirst({
-      where: {
-        userId: user.id,
-        status: { in: ['PENDING', 'APPROVED'] },
-      },
+      where: { userId: user.id, status: { in: ['PENDING', 'APPROVED'] } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -445,12 +461,8 @@ router.post(
 
     res.status(201).json({
       success: true,
-      request: {
-        id: created.id,
-        status: created.status,
-        createdAt: created.createdAt,
-      },
-      message: 'Password reset request sent to Admin. Once approved, you can set a new password here.',
+      request: { id: created.id, status: created.status, createdAt: created.createdAt },
+      message: 'Password reset request sent to Admin. Once approved, you can set a new password.',
     });
   })
 );
@@ -460,19 +472,14 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = resetStatusSchema.parse(req.body);
     const { user } = await findUserByIdentifier(req.prisma, body.identifier);
-
-    if (!user) {
-      throw new AppError('No account found with this email or phone number.', 404);
-    }
+    if (!user) throw new AppError('No account found with this email or phone number.', 404);
 
     const latest = await req.prisma.passwordResetRequest.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!latest) {
-      return res.json({ success: true, request: null });
-    }
+    if (!latest) return res.json({ success: true, request: null });
 
     let status = latest.status;
     if (status === 'APPROVED' && latest.expiresAt && latest.expiresAt < new Date()) {
@@ -498,16 +505,10 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = resetCompleteSchema.parse(req.body);
     const { user } = await findUserByIdentifier(req.prisma, body.identifier);
-
-    if (!user) {
-      throw new AppError('Account not found.', 404);
-    }
+    if (!user) throw new AppError('Account not found.', 404);
 
     const approvedReq = await req.prisma.passwordResetRequest.findFirst({
-      where: {
-        userId: user.id,
-        status: 'APPROVED',
-      },
+      where: { userId: user.id, status: 'APPROVED' },
       orderBy: { updatedAt: 'desc' },
     });
 
